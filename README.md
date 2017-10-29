@@ -22,7 +22,7 @@ The data will be saved in a hidden file named `.index.dat`
 
 The word should only contain number, letter and underline.
 
-## Feature
+## Features
 
 Using Multi - threaded programming method to increase the efficiency.
 
@@ -30,7 +30,7 @@ Using Queue and Hash table, easily saving and searching words.
 
 ## Example
 
-```shell
+```
 sh$./make_index /usr/include
 Done. Used 8.546137s
 Data saved to .index.dat
