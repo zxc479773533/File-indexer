@@ -22,11 +22,13 @@ typedef struct QNode {
 typedef struct {
     QNode* front;
     QNode* tail;
+    int count;
 } LinkQueue;
 
 // input:LinkQueue
 // output:status
 int InitQueue(LinkQueue *Q) {
+    Q->count = 0;
     Q->front = Q->tail = (QNode*)malloc(sizeof(QNode));
     if (Q->front == NULL)
         return -1;
@@ -59,14 +61,15 @@ int QueueLength(LinkQueue *Q) {
 
 // input:LinkQueue, the data
 // output:status
-int EnQueue(LinkQueue *Q, char *str) {
+int EnQueue(LinkQueue *Q, char *data) {
     QNode* p = (QNode*)malloc(sizeof(QNode));
     if (p == NULL)
         return -1;
-    p->data = str;
+    p->data = data;
     p->next = NULL;
     Q->tail->next = p;
     Q->tail = Q->tail->next;
+    Q->count++;
     return 0;
 }
 
@@ -76,12 +79,11 @@ ElemType DeQueue(LinkQueue *Q) {
     if (Q->front == Q->tail)
         return NULL;
     QNode *p = Q->front->next;
-    char *str = p->data;
     Q->front->next = p->next;
     if (p == Q->tail)
         Q->front = Q->tail;
-    free(p);
-    return str;
+    Q->count--;
+    return p->data;
 }
 
 // input:LinkQueue
@@ -102,11 +104,34 @@ ElemType GetQueueHead(LinkQueue *Q) {
 
 // input:LinkQueue
 // output:status
-int isEmpty(LinkQueue *Q) {
+int IsEmpty(LinkQueue *Q) {
     if (Q->front == Q->tail)
         return -1;
     else
         return 1;
+}
+
+// input:LinkQueue, the file data saved
+// output:none
+void SaveQueue(LinkQueue *Q, FILE *fp) {
+    QNode *p = Q->front->next;
+    while(p != NULL) {
+        fwrite(p, sizeof(p), 1, fp);
+        p = p->next;
+    }
+}
+
+// input:LinkQueue, the file data saved
+// output:none
+void LoadQueue(LinkQueue *Q, FILE *fp) {
+    int size = 1; 
+    while (1) {
+        QNode *tmp = (QNode *)malloc(sizeof(QNode));
+        size = fread(tmp, sizeof(QNode), 1, fp);
+        if (size == 0)
+            break;
+        EnQueue(Q, tmp->data);
+    }
 }
 
 #endif // !__LIBQUEUE_H_

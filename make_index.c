@@ -9,15 +9,69 @@ int isBinfile(char *path) {
     int state = 0;
     while ((c = fgetc(p)) != EOF) {
         // judge binart file
-        if (c <= 0x07 || c > 0xff)
+        if (c <= 0x07 || c > 0xff) {
             state = 1;
+            break;            
+        }
     }
     fclose(p);
     return state;
 }
 
+// word filter
+int ifword(char c) {
+    if (c == 0x5f || (c >= 0x30 && c <= 0x39) || \
+    (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a))
+        return 1;
+    else
+        return 0; 
+}
+
+// read file and write it in database
+void readfile(char *path) {
+    FILE *p = NULL;
+    HashNode* HashTable[512];
+    int count = 0;
+    char c;
+    int index = 0;
+    char word[512];
+    // make hash table
+    p = fopen(path, "r");
+    InitHash(HashTable);
+    // 1 means in world, 0 means not
+    int state = 0;
+    while ((c = fgetc(p)) != EOF) {
+        // if not in word
+        if (ifword(c) == 0 && state == 0)
+            continue;
+        // if word start
+        else if (ifword(c) == 1 && state == 0) {
+            state = 1;
+            word[index++] = c;
+        }
+        // if in word
+        else if (ifword(c) == 1 && state == 1) {
+            word[index++] = c;
+        }
+        // if word end
+        else if (ifword(c) == 0 && state == 1) {
+            word[index++] = '\0';
+            state = 0;
+            count += InsertHash(HashTable, word);
+            memset(word, 0, 512);
+            index = 0;
+        }
+    }
+    // lock and write it in database
+    pthread_mutex_lock(&path_mutex);
+    fprintf(fp, "%s\n%d\n", path, count);
+    SaveHash(HashTable, fp);
+    pthread_mutex_unlock(&path_mutex);
+    fclose(p);
+}
+
 // get text file in a dir
-void getTextFile(char *path) {
+void getTextFiles(char *path) {
 
     INDEX *ep = NULL;
     DIR *dp = opendir(path);
@@ -41,40 +95,18 @@ void getTextFile(char *path) {
             if (strcmp(path, "/") != 0)
                 strcat(newpath, "/");
             strcat(newpath, ep->d_name);
-            getTextFile(newpath);
+            getTextFiles(newpath);
         }
     }
     closedir(dp);
 }
 
-// read file and write it in database
-void readfile(char *path) {
-    FILE *p = NULL;
-    struct stat fileInfo;
-    int res;
-    p = fopen(path, "r");
-    if ((res = stat(path, &fileInfo)) == 0) {
-        char *txt = (char *)malloc(fileInfo.st_size + strlen(path) + 3);
-        strcpy(txt, path);
-        strcpy(txt + strlen(path), "\n");
-        fread(txt + strlen(path) + 1, fileInfo.st_size, 1, p);
-        strcpy(txt + fileInfo.st_size + strlen(path) + 1, "\n\n");
-        fwrite(txt, fileInfo.st_size + strlen(path) + 3, 1, fp);
-        free(txt);
-    }
-    fclose(p);
-}
-
-// a thread to make index
-void *makeIndex(void *arg) {
-    char *str = NULL;    
-    // lock it
+void* MakeIndex(void *arg) {
+    char *path = NULL;
     pthread_mutex_lock(&path_mutex);
-    while ((str = DeQueue(&fileQueue)) != NULL) {
+    while ((path = DeQueue(&fileQueue)) != NULL) {
         pthread_mutex_unlock(&path_mutex);
-        // unlock and read the file
-        readfile(str);
-        // lock when get a str from queue
+        readfile(path);
         pthread_mutex_lock(&path_mutex);
     }
     pthread_mutex_unlock(&path_mutex);
@@ -84,12 +116,17 @@ void *makeIndex(void *arg) {
 // main function
 int main(int argc, char **argv) {
 
+    // usage
+    if (argv[1] == NULL) {
+        printf("Usage: ./make_index [path]\n");
+        exit(1);;
+    }
     // calculate time
     double timeuse;
     struct timeval start, end;
     gettimeofday(&start, NULL);
 
-    // using multiply-threading
+    // using Multi - threaded programming method
     pthread_t thread[THREAD_NUM];
     void *thread_result;
     int thread_count;
@@ -104,14 +141,17 @@ int main(int argc, char **argv) {
     InitQueue(&fileQueue);
 
     // get the file path
-    getTextFile(path);
-
+    getTextFiles(path);
+    
     // for debug, to print the paths in queue
     // PrintQueue(&fileQueue);
+    
+    // the database header
+    fprintf(fp, "%d\n", fileQueue.count);
 
-    // make index
+    // indexed search
     for (thread_count = 0; thread_count < THREAD_NUM; thread_count++)
-        res = pthread_create(&thread[thread_count], NULL, makeIndex, NULL);
+        res = pthread_create(&thread[thread_count], NULL, MakeIndex, NULL);
 
     for (thread_count = THREAD_NUM - 1; thread_count >= 0; thread_count--)
         pthread_join(thread[thread_count], &thread_result);
@@ -122,6 +162,7 @@ int main(int argc, char **argv) {
     gettimeofday(&end, NULL);
     timeuse = end.tv_sec - start.tv_sec + (end.tv_usec -start.tv_usec) / 1e6;
     printf("Done. Used %.6fs\n", timeuse);
+    printf("Data saved to .index.dat\n");
 
     return 0;
 }
